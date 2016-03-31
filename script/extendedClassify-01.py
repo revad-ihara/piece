@@ -20,30 +20,33 @@ positive_vote = 0
 negative_vote = 0
 
 with open(sys.argv[1], "r") as train_file:
+    review_num = 0
     for line in train_file:
         line = unicode(line,'utf-8')
         #begin{combine all comment in one review, then input to words}
         if len(line) <= 1: #criteria to finish one review
             words = sum_line
             #print("----------"+comment_line[0]+"  ", end='')
-            #print("----------"+comment_line[0]+"  ")
+            #print "----------"+comment_line[0]+"  "
             #sys.stdout.write("----------"+comment_line[0]+"  ")
             ################## output of each review comment and decision
             #if label == 1: #accept:1 reject:0
-            #    print("Merged -----------")
+            #    print "Merged -----------"
             #elif label == 0:
-            #    print("Abandoned -----------")
+            #    print "Abandoned -----------"
             #else:
-            #    print("Failed -----------")
-                #print "error"
+            #    print "Failed -----------"
+            #    print "error"
                 #sys.exit(1)
             #print(words.lower())
             if (label==1) or (label==0):
                 cnt = defaultdict(lambda: 0)
-                for word in nltk.word_tokenize(words):
-                    cnt[wids[word.lower()]] += 1
-                #train_data.append(cnt, (int(label)))
-                train_data.append( (cnt, (int(label))) )
+                for my_line in sum_line.split("\n"):
+                    for word in nltk.word_tokenize(words):
+                        cnt[wids[word.lower()]] += 1
+                        #train_data.append(cnt, (int(label)))
+                        train_data.append( (review_num, dict(cnt), (int(label))) )
+            review_num += 1
             ################## initializeation
             sum_line = ""
             complete_flag = 0
@@ -51,7 +54,7 @@ with open(sys.argv[1], "r") as train_file:
             positive_vote = 0
             negative_vote = 0
         else:
-            line = line.replace('\n','')
+            #line = line.replace('\n','')
             comment_line = line.split("|||")
             #filter out automatical message
             comment_line[4] = comment_line[4].replace('\ @@@','')
@@ -99,6 +102,7 @@ test_data = []
 post_count = 0
 cnts = []
 with open(sys.argv[2], "r") as test_file:
+    review_num = 0
     for line in test_file:
         line = unicode(line,'utf-8')
         #begin{combine all comment in one review, then input to words}
@@ -108,32 +112,34 @@ with open(sys.argv[2], "r") as test_file:
             #    sys.exit(1)
             words = sum_line
             #print("----------"+comment_line[0]+"  ", end='')
-            #sys.stdout.write("----------"+comment_line[0]+"  ")
+            sys.stdout.write("----------"+comment_line[0]+"  ")
             ################## output of each review comment and decision
-            #if label == 1: #accept:1 reject:0
-            #    print "Merged -----------"
-            #elif label == 0:
-            #    print "Abandoned -----------"
-            #else:
-            #    print "Failed -----------"
-
+            if label == 1: #accept:1 reject:0
+                print "Merged -----------"
+            elif label == 0:
+                print "Abandoned -----------"
+            else:
+                print "Failed -----------"
             cnt = defaultdict(lambda: 0)
-            for word in nltk.word_tokenize(sum_line):
-                word = word.lower()
-                if word in wids:
-                    cnt[wids[word]] += 1
+            for line in sum_line.split("\n"):
+                for word in nltk.word_tokenize(sum_line):
+                    word = word.lower()
+                    if word in wids:
+                        cnt[wids[word]] += 1
             cnts.append(cnt)
             post_count += 1
+            review_num += 1
+            label = 1
+            test_data.append( (review_num, list(cnts), (int(label))) )
             ################## initializeation
             sum_line = ""
             complete_flag = 0
             label=-1
             positive_vote = 0
             negative_vote = 0
-            test_data.append( (list(cnts), (int(label))) )
             cnts = []
         else:
-            line = line.replace('\n','')
+            #line = line.replace('\n','')
             comment_line = line.split("|||")
             #filter out automatical message
             comment_line[4] = comment_line[4].replace('\ @@@','')
@@ -190,17 +196,22 @@ model.add_lookup_parameters("w", (VOCAB_SIZE, 1))
 model.add_parameters("b", (1))
 
 # A function to predict and evaluate one instance
-def predict_one(cnt, label):
+def predict_one(cnt):
   # Create the computation graph
   renew_cg()
   y_pred_input = [ parameter(model["b"]) ]
-  for word, val in cnt.items():
+  for review_num, word, val in cnt.items():
     y_pred_input.append( lookup(model["w"], word) * scalarInput(float(val)) )
   y_pred_input = esum(y_pred_input)
   y_pred = logistic(y_pred_input)
+  return y_pred
+
+# A function to evaluate a prediction
+def eval_one(y_pred, label):
   y = scalarInput(label)
   #print label
   loss = binary_log_loss(y_pred, y)
+  #print str(y_pred.scalar_value()) + "___" + str(label)
   answer = 1 if y_pred.scalar_value() > 0.5 else 0
   correct = 1 if answer == label else 0
   return loss, correct
@@ -209,8 +220,9 @@ def predict_one(cnt, label):
 for epoch in range(NUM_EPOCHS):
   # Training
   train_loss, train_correct, train_num = 0.0, 0.0, 0
-  for cnt, label in train_data:
-    my_loss, my_correct = predict_one(cnt, label)
+  for review_num, cnt, label in train_data:
+    my_pred = predict_one(cnt)
+    my_loss, my_correct = eval_one(my_pred, label)
     #print "aaa"+str(my_loss.scalar_value())
     train_loss += my_loss.scalar_value()
     train_correct += my_correct
@@ -221,6 +233,7 @@ for epoch in range(NUM_EPOCHS):
   #print("epoch %d: train -- l=%f, c=%f" % (epoch+1, train_loss, train_num))
   print("epoch %d: train -- l=%f, c=%f" % (epoch+1, train_loss/train_num, train_correct/train_num))
 
+
   # Testing, same as training but without backward and update
   #for(int post_count = 0; post_count < 11; post_count++):
   for post_count in range(0, 1000):
@@ -230,7 +243,8 @@ for epoch in range(NUM_EPOCHS):
 #        print "length zero error"
 #        sys.exit(1)
     for cnt, label in [(x[min(post_count, len(x)-1)], y) for x, y in test_data]:
-      my_loss, my_correct = predict_one(cnt, label)
+      my_pred = predict_one(cnt)
+      my_loss, my_correct = predict_one(my_pred, label)
       test_loss += my_loss.scalar_value()
       test_correct += my_correct
       test_num += 1
