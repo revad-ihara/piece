@@ -221,6 +221,7 @@ for epoch in range(NUM_EPOCHS):
   # Training
   train_loss, train_correct, train_num = 0.0, 0.0, 0
   for review_num, cnt, label in train_data:
+    print review_num
     my_pred = predict_one(cnt)
     my_loss, my_correct = eval_one(my_pred, label)
     #print "aaa"+str(my_loss.scalar_value())
@@ -242,7 +243,7 @@ for epoch in range(NUM_EPOCHS):
 #      if len(x) == 0:
 #        print "length zero error"
 #        sys.exit(1)
-    for cnt, label in [(x[min(post_count, len(x)-1)], y) for x, y in test_data]:
+    for review_num, cnt, label in [(x[min(post_count, len(x)-1)], y) for x, y in test_data]:
       my_pred = predict_one(cnt)
       my_loss, my_correct = predict_one(my_pred, label)
       test_loss += my_loss.scalar_value()
